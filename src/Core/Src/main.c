@@ -110,16 +110,16 @@ int main(void)
   MX_ADC1_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
-  HAL_SPI_Receive_IT(&hspi1, (uint8_t *)&RxBuffer, 4);
   /* USER CODE END 2 */
-
+  
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-    while (1)
+  while (1)
+  {
+    
+    HAL_SPI_Receive_IT(&hspi1, RxBuffer, 4);
+    if (RxBuffer[0] == 0x01)
     {
-      
-      // if (RxBuffer[0] == 0x01)
-      // {
         HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 1);
         for (int i = 0; i < 4; i++)
         {
@@ -140,11 +140,11 @@ int main(void)
         TxBuffer[1] = estAct.modIa[0];
         TxBuffer[2] = estAct.modIa[1];
         TxBuffer[3] = 0xFF;
-        HAL_SPI_Transmit_IT(&hspi1, (uint8_t *)&TxBuffer, 4);
-      // }
-      // else{
-        // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 0);
-      // }
+        HAL_SPI_Transmit_IT(&hspi1, TxBuffer, 4);
+      }
+      else{
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 0);
+      }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -336,7 +336,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
+void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
 {
   if (hspi == &hspi1)
   {
