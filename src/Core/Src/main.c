@@ -54,7 +54,7 @@ static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
-volatile uint8_t TxBuffer[4];
+volatile uint8_t TxBuffer[3];
 volatile uint8_t RxBuffer[4];
 volatile bool spiRxReady = false;
 volatile bool spiTxReady = false;
@@ -119,9 +119,10 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    
-    if(HAL_SPI_Receive(&hspi1, (uint8_t*)RxBuffer, 4, HAL_MAX_DELAY) == HAL_OK) HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 1);
-    else HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 0);
+    for (int i = 0; i < 4; i++) {//asegurarse que lo demas es 0
+        RxBuffer[i] = 0x00;
+    }
+    HAL_SPI_Receive(&hspi1, (uint8_t*)RxBuffer, 4, HAL_MAX_DELAY); 
     //if(HAL_SPI_TransmitReceive(&hspi1, (uint8_t*)TxBuffer, (uint8_t*)RxBuffer, 4, HAL_MAX_DELAY)==HAL_OK){
     //  spiRxReady=true;
     //if (RxBuffer[0] != 0x01)
@@ -138,7 +139,9 @@ int main(void)
     {
       estAct.modId[i] = HAL_GPIO_ReadPin(GPIOB, entradasD[i]);
     }
-    TxBuffer[0] = 0x00;
+     for (int i = 0; i < 4; i++) {//asegurarse que lo demas es 0
+        TxBuffer[i] = 0x00;
+    }
     for (int i = 0; i < 8; i++) {
       TxBuffer[0] |= (estAct.modId[i] ? 1 : 0) << i;
     }
@@ -148,10 +151,11 @@ int main(void)
     HAL_ADC_Stop(&hadc1);
     TxBuffer[1] = estAct.modIa[0];
     TxBuffer[2] = estAct.modIa[1];
-    TxBuffer[3] = 0xFF;
 
     /* Queda listo para el siguiente comando, sin bloquear. */
-    HAL_SPI_Transmit(&hspi1, (uint8_t*)TxBuffer, 4, HAL_MAX_DELAY);
+    
+    if(HAL_SPI_Transmit(&hspi1, (uint8_t*)TxBuffer, 3, 1000) == HAL_OK) HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 0);
+    else HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 1);
     if(1 == 1);
     //else{
     //  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 0);
