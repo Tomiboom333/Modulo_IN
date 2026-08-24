@@ -120,7 +120,7 @@ int main(void)
   while (1)
   {
     RxBuffer = 0x00;
-    HAL_SPI_Receive(&hspi1, &RxBuffer, 1, 100); 
+    HAL_SPI_Receive(&hspi1, &RxBuffer, 1, 5); 
     //if(HAL_SPI_TransmitReceive(&hspi1, (uint8_t*)TxBuffer, (uint8_t*)RxBuffer, 4, HAL_MAX_DELAY)==HAL_OK){
     //  spiRxReady=true;
     //if (RxBuffer[0] != 0x01)
@@ -164,7 +164,7 @@ int main(void)
 
       /* Queda listo para el siguiente comando, sin bloquear. */
 
-      if(HAL_SPI_Transmit(&hspi1, (uint8_t*)TxBuffer, 3, 100) == HAL_OK) HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);
+      if(HAL_SPI_Transmit(&hspi1, (uint8_t*)TxBuffer, 3, 5) == HAL_OK) HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);
       else HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET);
     }
     //else{
