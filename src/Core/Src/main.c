@@ -112,7 +112,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   //detección de modulo
-  uint8_t buf = 0x01;
+  uint8_t buf = 0x12;
   HAL_SPI_Receive(&hspi1, &RxMod, 1, HAL_MAX_DELAY);
   if(RxMod == 0x48){
     HAL_SPI_Transmit(&hspi1, &buf, 1, 10);
