@@ -73,6 +73,7 @@ uint16_t entradasD[8] ={
 };
 estAct_t estAct;
 uint8_t RxMod = 0x00;
+volatile uint16_t adcBuffer[2];
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -120,10 +121,11 @@ int main(void)
   if(RxMod == 0x48){
     HAL_SPI_Transmit(&hspi1, &buf, 1, 10);
   }
-
+  HAL_ADCEx_Calibration_Start(&hadc1);
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adcBuffer, 2);
   
   /* USER CODE END 2 */
-
+  
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
@@ -155,18 +157,10 @@ int main(void)
       estAct.modIa[0] = 0;
       estAct.modIa[1] = 0;
 
-      if (HAL_ADC_Start(&hadc1) == HAL_OK)
-      {
-        if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK)
-        {
-          estAct.modIa[0] = (uint8_t)HAL_ADC_GetValue(&hadc1);
-        }
-        if (HAL_ADC_PollForConversion(&hadc1, 10) == HAL_OK)
-        {
-          estAct.modIa[1] = (uint8_t)HAL_ADC_GetValue(&hadc1);
-        }
-        HAL_ADC_Stop(&hadc1);
-      }
+      estAct.modIa[0] =(uint8_t) (adcBuffer[0]>>4);
+      estAct.modIa[1] =(uint8_t) (adcBuffer[1]>>4);
+      
+    }
 
       TxBuffer[1] = estAct.modIa[0];
       TxBuffer[2] = estAct.modIa[1];
@@ -175,17 +169,16 @@ int main(void)
 
       if(HAL_SPI_Transmit(&hspi1, (uint8_t*)TxBuffer, 3, 5) == HAL_OK) HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);
       else HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET);
-    }
+  }
     //else{
     //  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 0);
     //}
 
     /* USER CODE END WHILE */
-
     /* USER CODE BEGIN 3 */
-  }
-  /* USER CODE END 3 */
 }
+  /* USER CODE END 3 */
+
 
 /**
   * @brief System Clock Configuration
@@ -311,7 +304,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi1.Init.NSS = SPI_NSS_HARD_INPUT;
+  hspi1.Init.NSS = SPI_NSS_HARD_INPUT;//estaba en hard
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
