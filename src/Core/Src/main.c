@@ -116,13 +116,15 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   //detección de modulo
-  uint8_t buf = 0x12;
-  HAL_SPI_Receive(&hspi1, &RxMod, 1, HAL_MAX_DELAY);
-  if(RxMod == 0x48){
-    HAL_SPI_Transmit(&hspi1, &buf, 1, 10);
+   uint8_t buf = 0x12;
+   HAL_SPI_Receive(&hspi1, &RxMod, 1, HAL_MAX_DELAY);
+   if(RxMod == 0x48){
+     HAL_SPI_Transmit(&hspi1, &buf, 1, 10);
+   }
+   else{
+     return 0;
   }
   HAL_ADCEx_Calibration_Start(&hadc1);
-  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adcBuffer, 2);
   
   /* USER CODE END 2 */
   
@@ -132,13 +134,7 @@ int main(void)
   {
     RxBuffer = 0x00;
     HAL_SPI_Receive(&hspi1, &RxBuffer, 1, 5); 
-    //if(HAL_SPI_TransmitReceive(&hspi1, (uint8_t*)TxBuffer, (uint8_t*)RxBuffer, 4, HAL_MAX_DELAY)==HAL_OK){
-    //  spiRxReady=true;
-    //if (RxBuffer[0] != 0x01)
-    //  {
-    //    HAL_SPI_TransmitReceive_IT(&hspi1, (uint8_t*)TxBuffer, (uint8_t*)RxBuffer, 4);
-    //    continue;
-    //  }
+
     if(RxBuffer==0x01){
       for (int i = 0; i < 4; i++)
       {
@@ -154,11 +150,8 @@ int main(void)
       for (int i = 0; i < 8; i++) {
         TxBuffer[0] |= (estAct.modId[i] ? 1 : 0) << i;
       }
-      estAct.modIa[0] = 0;
-      estAct.modIa[1] = 0;
-
-      estAct.modIa[0] =(uint8_t) (adcBuffer[0]>>4);
-      estAct.modIa[1] =(uint8_t) (adcBuffer[1]>>4);
+      HAL_ADC_Stop_DMA(&hadc1);
+      HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adcBuffer, 2);
       
     }
 
@@ -167,12 +160,11 @@ int main(void)
 
       /* Queda listo para el siguiente comando, sin bloquear. */
 
-      if(HAL_SPI_Transmit(&hspi1, (uint8_t*)TxBuffer, 3, 5) == HAL_OK) HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);
-      else HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET);
+      
   }
-    //else{
-    //  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 0);
-    //}
+  //else{
+  //  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 0);
+  //}
 
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
@@ -180,6 +172,14 @@ int main(void)
   /* USER CODE END 3 */
 
 
+  void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+    if (hadc->Instance == ADC1)
+    {
+      estAct.modIa[0] = (uint8_t) (adcBuffer[0]>>4);
+      estAct.modIa[1] = (uint8_t) (adcBuffer[1]>>4);
+    }
+}
 /**
   * @brief System Clock Configuration
   * @retval None
