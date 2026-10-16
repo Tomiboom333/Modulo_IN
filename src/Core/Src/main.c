@@ -157,7 +157,7 @@ int main(void)
 
       TxBuffer[1] = estAct.modIa[0];
       TxBuffer[2] = estAct.modIa[1];
-
+      HAL_SPI_Transmit(&hspi1, &TxBuffer, 3, 10);
       /* Queda listo para el siguiente comando, sin bloquear. */
 
       
@@ -380,13 +380,6 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
-{
-  if (hspi->Instance == SPI1)
-  {
-    spiRxReady = true;
-  }
-}
 /* USER CODE END 4 */
 
 /**
