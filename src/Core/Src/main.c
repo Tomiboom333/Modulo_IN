@@ -79,6 +79,37 @@ volatile uint16_t adcBuffer[2];
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+/* Protocolo con el CPU */
+#define CMD_DETECCION 0x48   // el CPU pregunta que tipo de modulo es
+#define CMD_LEER      0x01   // el CPU pide el estado de las entradas
+#define ID_MODULO     0x12   // respuesta a la deteccion: modulo de entradas
+
+/* NSS (chip select) del SPI1: PA4. Se puede leer como GPIO aunque lo use el SPI. */
+#define NSS_PORT GPIOA
+#define NSS_PIN  GPIO_PIN_4
+
+/* Contadores para verificar la comunicacion (se pueden ver con el depurador). */
+volatile uint32_t tramasOk = 0;
+volatile uint32_t tramasError = 0;
+
+static bool nss_activo(void)
+{
+  return HAL_GPIO_ReadPin(NSS_PORT, NSS_PIN) == GPIO_PIN_RESET;
+}
+
+/* Espera a que el CPU termine la trama (NSS en alto) y deja el SPI limpio
+ * para la siguiente: asi un error nunca se arrastra a la trama que sigue. */
+static void spi_fin_de_trama(void)
+{
+  uint32_t t0 = HAL_GetTick();
+  while (nss_activo() && (HAL_GetTick() - t0) < 5) {
+  }
+  __HAL_SPI_DISABLE(&hspi1);
+  (void)hspi1.Instance->DR;   // descarta un byte recibido a medias
+  (void)hspi1.Instance->SR;   // junto con la lectura de DR, limpia el overrun (OVR)
+  __HAL_SPI_ENABLE(&hspi1);
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -115,27 +146,38 @@ int main(void)
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
 
-  //detección de modulo
-   uint8_t buf = 0x12;
-   HAL_SPI_Receive(&hspi1, &RxMod, 1, HAL_MAX_DELAY);
-   if(RxMod == 0x48){
-     HAL_SPI_Transmit(&hspi1, &buf, 1, 10);
-   }
-   else{
-     return 0;
-  }
   HAL_ADCEx_Calibration_Start(&hadc1);
-  
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adcBuffer, 2); // primera lectura analogica
+
+  /* La deteccion del modulo ya no se hace solo al arrancar: el loop responde
+   * al comando 0x48 en cualquier momento. Asi, si el CPU o este modulo se
+   * reinician por separado, se pueden volver a detectar. */
+
   /* USER CODE END 2 */
-  
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    RxBuffer = 0x00;
-    HAL_SPI_Receive(&hspi1, &RxBuffer, 1, 5); 
+    /* 1. Esperar a que el CPU seleccione este modulo (NSS en bajo) */
+    while (!nss_activo()) {
+    }
 
-    if(RxBuffer==0x01){
+    /* 2. Recibir el comando y responder */
+    uint8_t cmd = 0;
+    if (HAL_SPI_Receive(&hspi1, &cmd, 1, 2) != HAL_OK)
+    {
+      cmd = 0;   // no llego el comando: se cuenta como error mas abajo
+    }
+
+    if (cmd == CMD_DETECCION)
+    {
+      uint8_t id = ID_MODULO;
+      HAL_SPI_Transmit(&hspi1, &id, 1, 2);
+      tramasOk++;
+    }
+    else if (cmd == CMD_LEER)
+    {
       for (int i = 0; i < 4; i++)
       {
         estAct.modId[i] = HAL_GPIO_ReadPin(GPIOA, entradasD[i]);
@@ -144,27 +186,33 @@ int main(void)
       {
         estAct.modId[i] = HAL_GPIO_ReadPin(GPIOB, entradasD[i]);
       }
-       for (int i = 0; i < 3; i++) {//asegurarse que lo demas es 0
-          TxBuffer[i] = 0x00;
-      }
+      TxBuffer[0] = 0x00;
       for (int i = 0; i < 8; i++) {
         TxBuffer[0] |= (estAct.modId[i] ? 1 : 0) << i;
       }
-      HAL_ADC_Stop_DMA(&hadc1);
-      HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adcBuffer, 2);
-      
-    }
-
       TxBuffer[1] = estAct.modIa[0];
       TxBuffer[2] = estAct.modIa[1];
-      HAL_SPI_Transmit(&hspi1, &TxBuffer, 3, 10);
-      /* Queda listo para el siguiente comando, sin bloquear. */
 
-      
+      /* La respuesta se carga apenas llega el comando; el CPU espera
+       * ~100 us antes de leerla (SPI_PAUSA_ESCLAVO_US en induSPI.c). */
+      if (HAL_SPI_Transmit(&hspi1, (uint8_t *)TxBuffer, 3, 2) == HAL_OK) {
+        tramasOk++;
+      } else {
+        tramasError++;
+      }
+
+      /* Nueva conversion del ADC para la proxima lectura */
+      HAL_ADC_Stop_DMA(&hadc1);
+      HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adcBuffer, 2);
+    }
+    else
+    {
+      tramasError++;   // timeout o comando desconocido
+    }
+
+    /* 3. Esperar el fin de la trama y dejar el SPI limpio */
+    spi_fin_de_trama();
   }
-  //else{
-  //  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 0);
-  //}
 
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
