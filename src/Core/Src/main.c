@@ -46,7 +46,7 @@ DMA_HandleTypeDef hdma_adc1;
 SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN PV */
-
+IWDG_HandleTypeDef hiwdg;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -56,7 +56,7 @@ static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
-volatile uint8_t TxBuffer[3];
+uint8_t TxBuffer[PROTO_LARGO_ENTRADAS];
 uint8_t RxBuffer;
 volatile bool spiRxReady = false;
 volatile bool spiTxReady = false;
@@ -79,10 +79,39 @@ volatile uint16_t adcBuffer[2];
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-/* Protocolo con el CPU */
-#define CMD_DETECCION 0x48   // el CPU pregunta que tipo de modulo es
-#define CMD_LEER      0x01   // el CPU pide el estado de las entradas
-#define ID_MODULO     0x12   // respuesta a la deteccion: modulo de entradas
+/* Protocolo con el CPU: ver induproto.h y docs/PROTOCOLO.md */
+
+/* Watchdog: si el firmware se cuelga mas de ~250 ms, el micro se reinicia.
+ * LSI ~40 kHz / 64 = 625 Hz -> 156 cuentas = 250 ms (166..375 ms segun el LSI). */
+static void iwdg_init(void)
+{
+  __HAL_DBGMCU_FREEZE_IWDG();   /* el watchdog se detiene con el depurador en pausa */
+  hiwdg.Instance = IWDG;
+  hiwdg.Init.Prescaler = IWDG_PRESCALER_64;
+  hiwdg.Init.Reload = 156;
+  if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+static uint8_t leer_digitales(void)
+{
+  uint8_t dig = 0;
+  for (int i = 0; i < 4; i++)
+  {
+    estAct.modId[i] = HAL_GPIO_ReadPin(GPIOA, entradasD[i]);
+  }
+  for (int i = 4; i < 8; i++)
+  {
+    estAct.modId[i] = HAL_GPIO_ReadPin(GPIOB, entradasD[i]);
+  }
+  for (int i = 0; i < 8; i++)
+  {
+    dig |= (uint8_t)((estAct.modId[i] ? 1 : 0) << i);
+  }
+  return dig;
+}
 
 /* NSS (chip select) del SPI1: PA4. Se puede leer como GPIO aunque lo use el SPI. */
 #define NSS_PORT GPIOA
@@ -147,6 +176,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   HAL_ADCEx_Calibration_Start(&hadc1);
+  iwdg_init();
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adcBuffer, 2); // primera lectura analogica
 
   /* La deteccion del modulo ya no se hace solo al arrancar: el loop responde
@@ -161,6 +191,7 @@ int main(void)
   {
     /* 1. Esperar a que el CPU seleccione este modulo (NSS en bajo) */
     while (!nss_activo()) {
+      HAL_IWDG_Refresh(&hiwdg);
     }
 
     /* 2. Recibir el comando y responder */
@@ -170,32 +201,26 @@ int main(void)
       cmd = 0;   // no llego el comando: se cuenta como error mas abajo
     }
 
-    if (cmd == CMD_DETECCION)
+    if (cmd == PROTO_CMD_DETECCION)
     {
-      uint8_t id = ID_MODULO;
-      HAL_SPI_Transmit(&hspi1, &id, 1, 2);
-      tramasOk++;
+      proto_armar_deteccion(PROTO_ID_ENTRADAS, TxBuffer);
+      if (HAL_SPI_Transmit(&hspi1, TxBuffer, PROTO_LARGO_DETECCION, 2) == HAL_OK) {
+        tramasOk++;
+      } else {
+        tramasError++;
+      }
     }
-    else if (cmd == CMD_LEER)
+    else if (cmd == PROTO_CMD_LEER)
     {
-      for (int i = 0; i < 4; i++)
-      {
-        estAct.modId[i] = HAL_GPIO_ReadPin(GPIOA, entradasD[i]);
-      }
-      for (int i = 4; i < 8; i++)
-      {
-        estAct.modId[i] = HAL_GPIO_ReadPin(GPIOB, entradasD[i]);
-      }
-      TxBuffer[0] = 0x00;
-      for (int i = 0; i < 8; i++) {
-        TxBuffer[0] |= (estAct.modId[i] ? 1 : 0) << i;
-      }
-      TxBuffer[1] = estAct.modIa[0];
-      TxBuffer[2] = estAct.modIa[1];
+      proto_datos_t d;
+      d.dig = leer_digitales();
+      d.ana[0] = estAct.modIa[AN_1];
+      d.ana[1] = estAct.modIa[AN_2];
+      proto_armar_datos(PROTO_CMD_LEER, &d, TxBuffer);
 
       /* La respuesta se carga apenas llega el comando; el CPU espera
-       * ~100 us antes de leerla (SPI_PAUSA_ESCLAVO_US en induSPI.c). */
-      if (HAL_SPI_Transmit(&hspi1, (uint8_t *)TxBuffer, 3, 2) == HAL_OK) {
+       * PROTO_PAUSA_US antes de leerla. */
+      if (HAL_SPI_Transmit(&hspi1, TxBuffer, PROTO_LARGO_ENTRADAS, 2) == HAL_OK) {
         tramasOk++;
       } else {
         tramasError++;
@@ -212,6 +237,7 @@ int main(void)
 
     /* 3. Esperar el fin de la trama y dejar el SPI limpio */
     spi_fin_de_trama();
+    HAL_IWDG_Refresh(&hiwdg);
   }
 
     /* USER CODE END WHILE */
@@ -224,8 +250,9 @@ int main(void)
 {
     if (hadc->Instance == ADC1)
     {
-      estAct.modIa[0] = (uint8_t) (adcBuffer[0]>>4);
-      estAct.modIa[1] = (uint8_t) (adcBuffer[1]>>4);
+      /* Rank 1 = canal 9 (PB1, InAn1), rank 2 = canal 8 (PB0, InAn2). 12 bits. */
+      estAct.modIa[AN_1] = adcBuffer[0] & 0x0FFF;
+      estAct.modIa[AN_2] = adcBuffer[1] & 0x0FFF;
     }
 }
 /**
@@ -308,9 +335,11 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_8;
+  /* InAn1 de la bornera esta en PB1 (canal 9) y InAn2 en PB0 (canal 8).
+   * Se convierte primero InAn1 para que adcBuffer[0] = AN_1. */
+  sConfig.Channel = ADC_CHANNEL_9;
   sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+  sConfig.SamplingTime = ADC_SAMPLETIME_55CYCLES_5;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -318,7 +347,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_9;
+  sConfig.Channel = ADC_CHANNEL_8;
   sConfig.Rank = ADC_REGULAR_RANK_2;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
@@ -406,13 +435,13 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pins : PB12 PB13 PB14 PB15 */
   GPIO_InitStruct.Pin = GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;   /* la placa tiene pull-up externo de 10k */
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PA8 PA9 PA10 PA11 */
   GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_11;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;   /* la placa tiene pull-up externo de 10k */
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PB9 */
