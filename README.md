@@ -4,9 +4,9 @@ Firmware del módulo de 8 entradas digitales y 2 analógicas (0–10 V).
 STM32F103C8, se compila con PlatformIO.
 
 Habla el **protocolo del backplane v2** (`src/Core/Inc/induproto.h`,
-descripción en [`docs/PROTOCOLO.md`](docs/PROTOCOLO.md)). Funciona con el
-firmware de CPU de **inducoreOpenPLC**; no es compatible con versiones
-anteriores del CPU.
+descripción en [`docs/PROTOCOLO.md`](docs/PROTOCOLO.md)). Funciona con la
+rama `Inducore-Innovatech` de **Modulo_CPU** (lógica en C) o con
+**inducoreOpenPLC**; no es compatible con el firmware de `main` de la CPU.
 
 ## Funcionamiento
 

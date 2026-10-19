@@ -2,8 +2,8 @@
 
 Comunicación entre el módulo CPU y los módulos de entradas y salidas por el
 bus SPI del riel. El formato está implementado en `induproto.h`, que es **el
-mismo archivo** en los tres firmwares (inducoreOpenPLC, Modulo_IN y
-Modulo_OUT). Si se cambia en uno, hay que copiarlo a los otros dos y subir
+mismo archivo** en los firmwares de CPU (Modulo_CPU rama Inducore-Innovatech,
+o inducoreOpenPLC), Modulo_IN y Modulo_OUT. Si se cambia en uno, hay que copiarlo a los otros dos y subir
 `PROTO_VERSION`.
 
 ## Capa física
